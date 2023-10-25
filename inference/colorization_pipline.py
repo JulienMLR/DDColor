@@ -2,6 +2,7 @@ import argparse
 import cv2
 import numpy as np
 import os
+import time
 from tqdm import tqdm
 import torch
 from basicsr.archs.ddcolor_arch import DDColor
@@ -14,7 +15,7 @@ class ImageColorizationPipeline(object):
         
         self.input_size = input_size
         if torch.cuda.is_available():
-            self.device = torch.device('cuda')
+            self.device = torch.device("cuda")
         else:
             self.device = torch.device('cpu')
 
@@ -55,7 +56,9 @@ class ImageColorizationPipeline(object):
         # if self.width * self.height < 100000:
         #     self.input_size = 256
 
+        start_time_p1 = time.time()
         img = (img / 255.0).astype(np.float32)
+
         orig_l = cv2.cvtColor(img, cv2.COLOR_BGR2Lab)[:, :, :1]  # (h, w, 1)
 
         # resize rgb image -> lab -> get grey -> rgb
@@ -64,17 +67,60 @@ class ImageColorizationPipeline(object):
         img_gray_lab = np.concatenate((img_l, np.zeros_like(img_l), np.zeros_like(img_l)), axis=-1)
         img_gray_rgb = cv2.cvtColor(img_gray_lab, cv2.COLOR_LAB2RGB)
 
+        stop_time_p1 = time.time()
+
         tensor_gray_rgb = torch.from_numpy(img_gray_rgb.transpose((2, 0, 1))).float().unsqueeze(0).to(self.device)
-        output_ab = self.model(tensor_gray_rgb).cpu()  # (1, 2, self.height, self.width)
+        output_ab = self.model(tensor_gray_rgb).cpu() # (1, 2, self.height, self.width)
+
+        start_time_p2 = time.time()
 
         # resize ab -> concat original l -> rgb
-        output_ab_resize = F.interpolate(output_ab, size=(self.height, self.width))[0].float().numpy().transpose(1, 2, 0)
+        output_ab_resize = F.interpolate(output_ab, size=(self.height, self.width))[0].float()
+        output_ab_resize = np.asarray(output_ab_resize).transpose(1, 2, 0)
         output_lab = np.concatenate((orig_l, output_ab_resize), axis=-1)
         output_bgr = cv2.cvtColor(output_lab, cv2.COLOR_LAB2BGR)
 
-        output_img = (output_bgr * 255.0).round().astype(np.uint8)    
+        output_img = (output_bgr * 255.0).round().astype(np.uint8)
+
+        stop_time_p2 = time.time()
+        duration_cpu_p1 = stop_time_p1 - start_time_p1
+        duration_cpu_p2 = stop_time_p2 - start_time_p2
+        duration_cpu_tot = duration_cpu_p1 + duration_cpu_p2
+        print(duration_cpu_p1, duration_cpu_p2, duration_cpu_tot)
 
         return output_img
+    
+        # self.height, self.width = img.shape[:2]
+        # # print(self.width, self.height)
+        # # if self.width * self.height < 100000:
+        # #     self.input_size = 256
+
+        # img = (img / 255.0).astype(np.float32)
+
+        # gpu_img = cv2.cuda_GpuMat()
+        # gpu_img.upload(img)
+
+        # orig_l = cv2.cuda.cvtColor(gpu_img, cv2.COLOR_BGR2Lab)[:, :, :1]  # (h, w, 1)
+
+        # # resize rgb image -> lab -> get grey -> rgb
+        # gpu_img = cv2.cuda.resize(gpu_img, (self.input_size, self.input_size))
+        # img_l = cv2.cuda.cvtColor(gpu_img, cv2.COLOR_BGR2Lab)[:, :, :1]
+        # img_gray_lab = cp.concatenate((img_l, cp.zeros_like(img_l), cp.zeros_like(img_l)), axis=-1)
+        # img_gray_rgb = cv2.cuda.cvtColor(img_gray_lab, cv2.COLOR_LAB2RGB)
+
+        # #tensor_gray_rgb = torch.from_numpy(img_gray_rgb.transpose((2, 0, 1))).float().unsqueeze(0).to(self.device)
+        # tensor_gray_rgb = torch.as_tensor(img_gray_rgb.transpose((2, 0, 1)), device='cuda').float().unsqueeze(0)
+        # output_ab = self.model(tensor_gray_rgb) #.cpu()  # (1, 2, self.height, self.width)
+
+        # # resize ab -> concat original l -> rgb
+        # output_ab_resize = F.interpolate(output_ab, size=(self.height, self.width))[0].float()
+        # output_ab_resize = cp.asarray(output_ab_resize).transpose(1, 2, 0)
+        # output_lab = cp.concatenate((orig_l, output_ab_resize), axis=-1)
+        # output_bgr = cv2.cuda.cvtColor(output_lab, cv2.COLOR_LAB2BGR)
+
+        # output_img = (output_bgr.cpu() * 255.0).round().astype(np.uint8)
+
+        # return output_img
 
 
 def main():
