@@ -2,6 +2,10 @@ import threading
 import cv2
 import time
 import numpy as np
+import kornia
+from kornia.image import Image
+import queue
+
 
 from imageFeeder import ImageListener
 from inference.colorization_pipline import ImageColorizationPipeline
@@ -19,36 +23,68 @@ class ImageProcessor(ImageListener):
         print("Using model :", modelpath)
         self.colorizer = ImageColorizationPipeline(modelpath)
 
+        self.nbFrame = 0
+        self.startMesure = None
+        th = threading.Thread(target=self.computeFPS)
+        th.setDaemon(True)
+        th.start()
+
+        # Thread for getting the image
+        th_image_reception = threading.Thread(target=self.onImage)
+        th_image_reception.setDaemon(True)
+        th_image_reception.start()
+        self.queue = queue.Queue(maxsize=1)
+
+
+    def get_image(self):
+        while True:
+            image = self.queue.get()
+            self.queue.task_done()
+
+    
+    def computeFPS(self):
+        while True:
+            initFrame = self.nbFrame
+            time.sleep(1)
+            finalFrame = self.nbFrame
+            print("FPS ? ", finalFrame-initFrame)
+
+
     def addListener(self, listener):
         self.listenersMutex.acquire()
         self.listeners.append(listener)
         self.listenersMutex.release()
+
 
     def removeListener(self, listener):
         self.listenersMutex.acquire()
         self.listeners.remove(listener)
         self.listenersMutex.release()
 
+
     def onImage(self, image):
+        self.queue.put(image)
+
         processedImage = self.runIR2RGB(image)
+        self.nbFrame += 1
         self.listenersMutex.acquire()
         for listener in self.listeners:
             listener.onImage(processedImage)
         self.listenersMutex.release()
 
+
     def runIR2RGB(self, image):
+        if self.startMesure is None:
+            self.startMesure = time.time()
         start = time.time()
-        #preprocessing
-        preprocessedimage = cv2.resize(image, (720, 1280))
-        preprocessedimage = cv2.cvtColor(preprocessedimage,cv2.COLOR_GRAY2BGR)
-        #processing
-        processedimage =  self.colorizer.process(preprocessedimage)
-        #postprocessing
-        postprocessedimage = cv2.rotate(processedimage, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        
+        # Model inference
+        processedimage =  self.colorizer.process(img=image)
+        
         stop = time.time()
-        processingtime = stop - start
-        print(processingtime)
-        return postprocessedimage
+        # processingtime = stop - start
+        # print("Total processing time: ", processingtime, "FPS: {}".format(round(1/processingtime, 3)))
+        return processedimage
     
     def TEST_runIR2RGB(self, image):
         test1Img = np.copy(image)

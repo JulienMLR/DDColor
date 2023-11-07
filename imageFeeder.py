@@ -1,5 +1,5 @@
 import socket
-import numpy
+import numpy as np
 import time
 import threading
 
@@ -32,7 +32,7 @@ class ImageFeeder:
             try:
                 clientSock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
                 clientSock.connect((self.broadcaster_ip, self.broadcaster_port))
-                while self.run: 
+                while self.run:
                     height = int.from_bytes(clientSock.recv(4, socket.MSG_WAITALL), 'big', signed=False)
                     width = int.from_bytes(clientSock.recv(4, socket.MSG_WAITALL), 'big', signed=False)
                     if height <=0 or width <= 0:
@@ -41,7 +41,7 @@ class ImageFeeder:
                     pixels = bytearray(clientSock.recv(size, socket.MSG_WAITALL))
                     if len(pixels) < size:
                         raise ConnectionRefusedError
-                    data = numpy.array(pixels).reshape((height, width))
+                    data = np.array(pixels).reshape((height, width))
                     image = data
                     self.listenersMutex.acquire()
                     for listener in self.listeners:

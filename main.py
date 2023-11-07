@@ -24,7 +24,7 @@ def main():
     args = parser.parse_args()
 
     feeder = ImageFeeder(args.broadcaster_ip, args.broadcaster_port)
-    processor = ImageProcessor(os.path.expanduser(args.model_path))
+    processor = ImageProcessor(modelpath=os.path.expanduser(args.model_path))
     viewer = ImageViewer()
 
     run = True
